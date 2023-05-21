@@ -7,8 +7,8 @@ regressionEvaluation <- function(label, predictions){
               data.frame(
                 "rsq" = reg$r.squared,
                 "rsq_adj" = reg$adj.r.squared,
-                "rmse" = RMSE(x = x, label, na.rm = T),
-                "mae" = MAE(x = x, label, na.rm = T),
+                "rmse" = RMSE(.resid = (label - x), na.rm = T),
+                "mae" = MAE(.resid = (label - x), na.rm = T),
                 "same_dir" = mean((x>=0) & (label >= 0), na.rm=T)
               ) %>% 
                 return()

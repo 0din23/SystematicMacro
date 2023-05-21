@@ -39,7 +39,7 @@ ml_model <- function(df_decom, h, label_col, split_prop, features, reg_eval = "r
     step_normalize(all_numeric_predictors()) %>% 
     
     step_dummy(all_nominal_predictors()) %>% 
-    step_lincomb(all_predictors()) %>% 
+    step_lincomb(all_numeric_predictors()) %>% 
     
     step_corr(all_numeric_predictors(),
               threshold = 0.85) %>% 

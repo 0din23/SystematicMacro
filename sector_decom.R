@@ -1,4 +1,4 @@
-
+source("R/dependencies.R")
 ################################################################################
 # DATA #
 ################################################################################
@@ -162,27 +162,31 @@ evaluation %>%
 # BUILD ML-MODEL #
 ################################################################################
 # Get Feature Set --------------------------------------------------------------
-feature_data <- feature_pipe()
+feature_data <- feature_data[[1]]
 
 # Preprocessing Data -----------------------------------------------------------
-df_decom <- RES_market[[1]][[1]] %>%
+df_decom <- RES_market[[2]][[2]] %>%
   filter(names == "Automobile") %>% 
   select(-names)
-h <- 6
+h <- 21
 label_col <- "alpha"
 split_prop <- 0.7
 
 ## Filter Features
-features <- feature_data %>%
-  na_col_filter(df=.,th=400) %>% 
-  .[-c(1:400),] %>% 
-  #ADF_Filter(df=., th = 0.01, exclude = c("date")) %>% 
-  Clipping_Filter(df=.) %>% 
-  as.data.frame()
+features <- feature_data %>% 
+  left_join(., df_decom %>% select(-c(alpha)), by = "date")
 
-features[!is.factor(features)][is.na(features)] <- 0
+features_filter <- feature_selection_filter(df=features,
+                                            split_prop = split_prop,
+                                            label_df = df_decom %>% select(date, alpha),
+                                            h = h, reg_q = 0.01, rf_q = 0.02)
+filtered_features <- features %>% select(features_filter)
+filtered_decom <- df_decom %>% select(date, alpha) %>% filter(date %in% filtered_features$date)
+filtered_features <- filtered_features %>% filter(date %in% filtered_decom$date)
 
-test_1 <- ml_model(df_decom, h, label_col, split_prop, features = features)
+test_1 <- ml_model(df_decom = filtered_decom,
+                   h = h, label_col = label_col,
+                   split_prop = split_prop, features = filtered_features)
 # Test Model -------------------------------------------------------------------
 
 # Evaluate Testset -------------------------------------------------------------
@@ -192,35 +196,50 @@ predictions <- test_1$model_test %>%
          simple_mean_ensemble,similarity_ensemble, divergence_ensemble,
          alpha)
 
-regressionEvaluation(label = test_1$model_test$label, predictions = predictions) 
+regressionEvaluation(label = test_1$model_test$label, predictions = predictions)
+
+## Evaluate Classification Quality
+predictions <- test_1$model_test %>%
+  select(glm_prediction_best, rf_prediction_best, xgb_prediction_best,
+         simple_mean_ensemble,similarity_ensemble, divergence_ensemble,
+         alpha) %>% 
+  apply(.,2, function(x){ifelse(x>0,1,0)}) %>% 
+  as.data.frame() %>% 
+  mutate_all(as.factor)
+
+classificationEvaluation(label = ifelse(test_1$model_test$label>0,1,0) %>% as.factor(),  classification_prediction = predictions)
 
 ## Plots
 
 ### Equity Line
+## Evaluation Plot
 p <- test_1$model_test %>% 
   ggplot(.) +
-  geom_line(aes(x=date, y = label, color= "Return 20B (forward)"), size=0.7) +
+  geom_line(aes(x=date, y = label, color= "Label"), linewidth=0.7) +
   geom_line(aes(x=date, y = xgb_prediction_best,
-                color = "XGB Prediction (rmse)"), size=0.7) +
+                color = "XGB Prediction"), linewidth=0.6) +
   geom_line(aes(x=date, y = glm_prediction_best,
-                color = "GLM Prediction (rsq)"), size=0.7) +
+                color = "GLM Prediction"), linewidth=0.6) +
   geom_line(aes(x=date, y = rf_prediction_best,
-                color = "RF Prediction (rmse)"), size=0.7) +
+                color = "RF Prediction"), linewidth=0.6) +
   geom_line(aes(x=date, y = simple_mean_ensemble,
-                color = "Simple Mean Ensemble"), size=0.7) +
+                color = "Simple Mean Ensemble"), linewidth=0.6) +
   geom_line(aes(x=date, y = similarity_ensemble,
-                color = "Similarity Ensemble"), size=0.7) +
+                color = "Similarity Ensemble"), linewidth=0.6) +
   geom_line(aes(x=date, y = divergence_ensemble,
-                color = "Divergence Ensemble"), size=0.7) +
+                color = "Divergence Ensemble"), linewidth=0.6) +
+  geom_line(aes(x=date, y = alpha,
+                color = "Simple Benchmark"), linewidth=0.6) +
   ylab("20B Forward Return") + xlab("Date") + ggtitle("Out-off Sample fit (XGB)")+
   scale_color_manual(name = "Legend",
-                     values = c("Return 20B (forward)" = "black",
-                                "GLM Prediction (rsq)" = "cyan",
-                                "RF Prediction (rmse)" = "chartreuse3",
+                     values = c("Label" = "black",
+                                "GLM Prediction" = "cyan",
+                                "RF Prediction" = "chartreuse3",
                                 "Simple Mean Ensemble" = "red",
                                 "Similarity Ensemble" = "green",
                                 "Divergence Ensemble" = "blue",
-                                "XGB Prediction (rmse)" = "deeppink")) +
+                                "XGB Prediction" = "deeppink",
+                                "Simple Benchmark" = "yellow")) +
   theme_tq()
 
 p %>% ggplotly()
@@ -245,7 +264,7 @@ plot_df <- data.frame(
 
 plot_df%>%
   filter(values != 0) %>% 
-  #  filter(abs(values) >=   as.numeric(quantile(abs(plot_df$values),prob = c(0.90)))) %>% 
+  filter(abs(values) >=   as.numeric(quantile(abs(plot_df$values),prob = c(0.90)))) %>% 
   arrange(desc(values)) %>% 
   ggplot(.) + 
   geom_col(aes(x = names, y = values)) +

@@ -49,7 +49,7 @@ Clipping_Filter <- function(df, th =c(0.01, 0.99), exclude = c()){
 }
 
 
-feature_selection_filter <- function(df, split_prop, label_df, h ){
+feature_selection_filter <- function(df, split_prop, label_df, h, reg_q = 0.05, rf_q = 0.05){
   
   ## split df
   label_col <- label_df %>% colnames() %>% .[2]
@@ -58,37 +58,66 @@ feature_selection_filter <- function(df, split_prop, label_df, h ){
   df <- df %>%
     head(round(nrow(df)*split_prop)) %>% 
     left_join(label_df, by = "date")
+  df <- df[!is.na(df[,label_col]),]
+  
   df_1 <- df %>%
     head(floor(nrow(df)/2)) %>% 
-    na.locf()
+    na_locf()
   df_2 <- df %>%
     tail(ceiling(nrow(df)/2)) %>% 
-    na.locf()
+    na_locf()
   
   ## test linear feature importance
   r2_1 <- df_1 %>%
     select(-date) %>% 
     apply(., 2, function(x){
-      
       reg_sum <- lm(df_1[[label_col]] ~ x) %>% 
         summary()
       return(reg_sum$r.squared)
     })
   
-  r2_2 <- df_1 %>%
+  r2_2 <- df_2 %>%
     select(-date) %>% 
     apply(., 2, function(x){
-      
-      reg_sum <- lm(df_1[[label_col]] ~ x) %>% 
+      reg_sum <- lm(df_2[[label_col]] ~ x) %>% 
         summary()
       return(reg_sum$r.squared)
     })
   
+  res_lin <- sort((r2_1 + r2_2), decreasing = T) %>% tail(round(length(r2_1) * (1-reg_q))) %>% names()
+  
   ## test random forrest features
-  rf_1 <- ranger::ranger(y = df_1[[label_col]], x = df_1[,colnames(df_1)!=label_col] %>% 
-                           as.matrix())
+  col_filter <- c(label_col, "date")
+  cut <- ncol(df_1[,!(colnames(df_1) %in% col_filter)]) * (1-rf_q)
+  cut <- floor(cut / 5)
+  for(k in 1:5){
+    rf_1 <- ranger::ranger(y = df_1[[label_col]], x = df_1[,!(colnames(df_1) %in% col_filter)] %>% 
+                             as.matrix(), importance = "impurity")
+    
+    rf_2 <- ranger::ranger(y = df_2[[label_col]], x = df_2[,!(colnames(df_1) %in% col_filter)] %>% 
+                             as.matrix(), importance = "impurity")
+    
+    
+    col_filter <- col_filter %>% 
+      append(.,
+             append(
+               sort(rf_1$variable.importance, decreasing = T) %>%
+                 tail(cut) %>%
+                 names(),
+               sort(rf_2$variable.importance, decreasing = T) %>%
+                 names()
+               ) %>% 
+               unique() %>%
+               sample(x=., size = cut)
+             ) %>%
+      unique() 
+  }
   
-  
+  ## Combine
+  res_lin <- res_lin[res_lin %in% col_filter]
+  col_filter <- col_filter[col_filter %in% res_lin]
+  col_filter <- c(col_filter, label_col)
+  df[,c(colnames(df)[!(colnames(df) %in% col_filter)])] %>% colnames()
 }
 
 
