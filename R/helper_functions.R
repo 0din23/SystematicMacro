@@ -1,6 +1,19 @@
 cum.ret <- function(vec){
   cumprod(x = c(1, vec +1))[-1]
 }
+
+businessday_seq <- function(start, end = Sys.Date(), ref = NULL){
+  if(is.null(ref)){
+    as.Date(as.Date(start):as.Date(end)) %>% 
+      .[!(weekdays(.) %in% c("Samstag", "Sonntag"))] %>% 
+      return()
+  } else{
+    tq_get(ref, from=start, to = end) %>% 
+      pull(date) %>% 
+      return()
+  }
+}
+
 excess_autocorr <- function(a,b){
   a <- unlist(a)
   b <- unlist(b)
