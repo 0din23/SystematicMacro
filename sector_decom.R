@@ -287,6 +287,8 @@ h <- 21
 label_col <- "alpha"
 split_prop <- 0.7
 
+
+
 ## Filter Features
 features <- feature_data %>%
   select(-starts_with("adjusted_")) %>% 
@@ -313,21 +315,14 @@ test_2$rf_class_final %>%
   vip(num_features = 20)
 
 test_2$glm_class_final$fit$fit$fit$beta
-test_2$xgb_class_final$fit$fit$fit$params$
+test_2$xgb_class_final$fit$fit$fit$params
   ################################################################################
 # FORECAST #
 ################################################################################
 # Specify Inputs
-DATA <- RES_market[[1]][[3]]
-h <- 6
-split_prop <- 0.5
-features <- feature_data %>%
-  select(-starts_with("adjusted_")) %>% 
-  select(-c("^STOXX", "EXSA.DE" )) %>% 
-  na_col_filter(df=.,th=400) %>% 
-  .[-c(1:400),] %>% 
-  ADF_Filter(df=., th = 0.05, exclude = c("date")) %>% 
-  Clipping_Filter(df=.)
+DATA <- RES_market[[2]][[2]]
+h <- 21
+split_prop <- 0.7
 
 # Train And forecast
 FORECAST <- DATA %>% 
@@ -342,12 +337,34 @@ FORECAST <- DATA %>%
     
     # Forecast Alpha
     print_timed("Alpha for: ", x, " --------------------------------------")
-    forc_alpha<- ml_model(tmp_decom, h, label_col = "alpha",
-                          split_prop = split_prop, features = features)
+    features <- feature_data %>% 
+      left_join(., tmp_decom %>% select(-c(alpha)), by = "date")
+    features_filter <- feature_selection_filter(df=features,
+                                                split_prop = split_prop,
+                                                label_df = tmp_decom %>% select(date, alpha),
+                                                h = h, reg_q = 0.01, rf_q = 0.02)
+    
+    filtered_features <- features %>% select(features_filter)
+    filtered_decom <- tmp_decom %>% select(date, alpha) %>% filter(date %in% filtered_features$date)
+    filtered_features <- filtered_features %>% filter(date %in% filtered_decom$date)
+    
+    forc_alpha<- ml_model(filtered_decom, h, label_col = "alpha",
+                          split_prop = split_prop, features = filtered_features)
     
     print_timed("Beta for: ", x, " --------------------------------------")
-    forc_beta <- ml_model(tmp_decom, h, label_col = "ß_Mkt",
-                          split_prop = split_prop, features = features)
+    features <- feature_data %>% 
+      left_join(., tmp_decom %>% select(-c(ß_Mkt)), by = "date")
+    features_filter <- feature_selection_filter(df=features,
+                                                split_prop = split_prop,
+                                                label_df = tmp_decom %>% select(date, ß_Mkt),
+                                                h = h, reg_q = 0.01, rf_q = 0.02)
+    
+    filtered_features <- features %>% select(features_filter)
+    filtered_decom <- tmp_decom %>% select(date, ß_Mkt) %>% filter(date %in% filtered_features$date)
+    filtered_features <- filtered_features %>% filter(date %in% filtered_decom$date)
+    
+    forc_beta <- ml_model(filtered_decom, h, label_col = "ß_Mkt",
+                          split_prop = split_prop, features = filtered_features)
     
     # Combine
     forc_alpha$model_test %>% 
@@ -377,6 +394,7 @@ save(FORECAST, file =  "FORECAST.RData")
 # Evaluating the Forecast ------------------------------------------------------
 ## alpha
 predictions <- FORECAST %>% rbindlist() %>%
+  filter(names == "Automobile") %>% 
   select(symbol = names,date, alpha, glm_prediction_best_alpha, rf_prediction_best_alpha,
          xgb_prediction_best_alpha, simple_mean_ensemble_alpha, similarity_ensemble_alpha,
          divergence_ensemble_alpha) %>% 

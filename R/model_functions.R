@@ -39,7 +39,7 @@ evaluateMomentumStrategy <- function(df, benchmark, weights){
   ## Check Beta against Benchmark
   for(k in 1:(ncol(res)-1)){
     
-    reg <- lm(df[,colnames(res)[k]] ~ df[,benchmark])
+    reg <- lm(df[[colnames(res)[k]]] ~ df[[benchmark]])
     res["alpha",k] <- reg$coefficients[1]
     res["beta",k] <- reg$coefficients[2]
   }
