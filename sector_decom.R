@@ -276,31 +276,33 @@ plot_df%>%
 # BUILD ML-MODEL (Class) #
 ################################################################################
 # Get Feature Set --------------------------------------------------------------
-feature_data <- feature_pipe()
-
-# Preprocessing Data -----------------------------------------------------------
-df_decom <- RES_market[[2]][[1]] %>%
-  filter(names == "Banks") %>% 
-  select(-names) %>% 
-  mutate(excess = alpha + epsilon)
+df_decom <- RES_market[[2]][[2]] %>%
+  filter(names == "Automobile") %>% 
+  select(-names)
 h <- 21
 label_col <- "alpha"
 split_prop <- 0.7
 
-
-
 ## Filter Features
-features <- feature_data %>%
-  select(-starts_with("adjusted_")) %>% 
-  select(-c("^STOXX", "EXSA.DE" )) %>% 
-  na_col_filter(df=.,th=400) %>% 
-  .[-c(1:400),] %>% 
-  ADF_Filter(df=., th = 0.05, exclude = c("date")) %>% 
-  Clipping_Filter(df=.)
+features <- feature_data %>% 
+  left_join(., df_decom %>% select(-c(alpha)), by = "date")
 
-# features[!is.factor(features)][is.na(features)] <- 0
+features_filter <- feature_selection_filter(df=features,
+                                            split_prop = split_prop,
+                                            label_df = df_decom %>% select(date, alpha),
+                                            h = h, reg_q = 0.01, rf_q = 0.02)
+filtered_features <- features %>% select(features_filter)
+filtered_decom <- df_decom %>% select(date, alpha) %>% filter(date %in% filtered_features$date)
+filtered_features <- filtered_features %>% filter(date %in% filtered_decom$date)
 
-test_2 <- ml_model_class(df_decom, h, label_col, split_prop, features = features)
+test_1 <- ml_model(df_decom = filtered_decom,
+                   h = h, label_col = label_col,
+                   split_prop = split_prop, features = filtered_features)
+
+
+test_2 <- ml_model_class(df_decom = filtered_decom,
+                         h = h, label_col = label_col,
+                         split_prop = split_prop, features = filtered_features)
 
 # Evaluate Testset -------------------------------------------------------------
 ## Evaluation Table
@@ -314,7 +316,7 @@ test_2$rf_class_final %>%
   extract_fit_parsnip() %>% 
   vip(num_features = 20)
 
-test_2$glm_class_final$fit$fit$fit$beta
+test_2$glm_class_final$fit$fit$fit$beta$`0`
 test_2$xgb_class_final$fit$fit$fit$params
   ################################################################################
 # FORECAST #
@@ -323,6 +325,7 @@ test_2$xgb_class_final$fit$fit$fit$params
 DATA <- RES_market[[2]][[2]]
 h <- 21
 split_prop <- 0.7
+#feature_data <- feature_data[[1]]
 
 # Train And forecast
 FORECAST <- DATA %>% 
@@ -340,16 +343,18 @@ FORECAST <- DATA %>%
     features <- feature_data %>% 
       left_join(., tmp_decom %>% select(-c(alpha)), by = "date")
     features_filter <- feature_selection_filter(df=features,
-                                                split_prop = split_prop,
                                                 label_df = tmp_decom %>% select(date, alpha),
+                                                split_prop = split_prop,
                                                 h = h, reg_q = 0.01, rf_q = 0.02)
     
     filtered_features <- features %>% select(features_filter)
     filtered_decom <- tmp_decom %>% select(date, alpha) %>% filter(date %in% filtered_features$date)
     filtered_features <- filtered_features %>% filter(date %in% filtered_decom$date)
     
-    forc_alpha<- ml_model(filtered_decom, h, label_col = "alpha",
-                          split_prop = split_prop, features = filtered_features)
+    # forc_alpha<- ml_model(filtered_decom, h, label_col = "alpha",
+    #                       split_prop = split_prop, features = filtered_features)
+    forc_alpha <- ml_model_class(filtered_decom, h, label_col = "alpha",
+                                 split_prop = split_prop, features = filtered_features)
     
     print_timed("Beta for: ", x, " --------------------------------------")
     features <- feature_data %>% 
@@ -363,29 +368,45 @@ FORECAST <- DATA %>%
     filtered_decom <- tmp_decom %>% select(date, ß_Mkt) %>% filter(date %in% filtered_features$date)
     filtered_features <- filtered_features %>% filter(date %in% filtered_decom$date)
     
-    forc_beta <- ml_model(filtered_decom, h, label_col = "ß_Mkt",
-                          split_prop = split_prop, features = filtered_features)
+    # forc_beta <- ml_model(filtered_decom, h, label_col = "ß_Mkt",
+    #                       split_prop = split_prop, features = filtered_features)
+    forc_beta <- ml_model_class(filtered_decom, h, label_col = "ß_Mkt",
+                                 split_prop = split_prop, features = filtered_features)
     
     # Combine
-    forc_alpha$model_test %>% 
+    # forc_alpha$model_test %>%
+    #   select(date, alpha,
+    #          glm_prediction_best_alpha = glm_prediction_best,
+    #          rf_prediction_best_alpha = rf_prediction_best,
+    #          xgb_prediction_best_alpha = xgb_prediction_best,
+    #          simple_mean_ensemble_alpha = simple_mean_ensemble,
+    #          similarity_ensemble_alpha = similarity_ensemble,
+    #          divergence_ensemble_alpha = divergence_ensemble) %>%
+    #   left_join(.,
+    #             forc_beta$model_test %>%
+    #               select(date, ß_Mkt,
+    #                      glm_prediction_best_ß = glm_prediction_best,
+    #                      rf_prediction_best_ß = rf_prediction_best,
+    #                      xgb_prediction_best_ß = xgb_prediction_best,
+    #                      simple_mean_ensemble_ß = simple_mean_ensemble,
+    #                      similarity_ensemble_ß = similarity_ensemble,
+    #                      divergence_ensemble_ß = divergence_ensemble),
+    #             by = "date") %>%
+    #   mutate(names = x) %>%
+    #   return()
+    forc_alpha$model_test %>%
       select(date, alpha,
-             glm_prediction_best_alpha = glm_prediction_best,
-             rf_prediction_best_alpha = rf_prediction_best,
-             xgb_prediction_best_alpha = xgb_prediction_best,
-             simple_mean_ensemble_alpha = simple_mean_ensemble,
-             similarity_ensemble_alpha = similarity_ensemble,
-             divergence_ensemble_alpha = divergence_ensemble) %>% 
-      left_join(., 
-                forc_beta$model_test %>% 
+             glm_prediction_best_alpha = glm_prediction_class,
+             rf_prediction_best_alpha = rf_prediction_class,
+             xgb_prediction_best_alpha = xgb_prediction_class) %>%
+      left_join(.,
+                forc_beta$model_test %>%
                   select(date, ß_Mkt,
-                         glm_prediction_best_ß = glm_prediction_best,
-                         rf_prediction_best_ß = rf_prediction_best,
-                         xgb_prediction_best_ß = xgb_prediction_best,
-                         simple_mean_ensemble_ß = simple_mean_ensemble,
-                         similarity_ensemble_ß = similarity_ensemble,
-                         divergence_ensemble_ß = divergence_ensemble),
-                by = "date") %>% 
-      mutate(names = x) %>% 
+                         glm_prediction_best_ß = glm_prediction_class,
+                         rf_prediction_best_ß = rf_prediction_class,
+                         xgb_prediction_best_ß = xgb_prediction_class),
+                by = "date") %>%
+      mutate(names = x) %>%
       return()
   })
 
@@ -394,7 +415,6 @@ save(FORECAST, file =  "FORECAST.RData")
 # Evaluating the Forecast ------------------------------------------------------
 ## alpha
 predictions <- FORECAST %>% rbindlist() %>%
-  filter(names == "Automobile") %>% 
   select(symbol = names,date, alpha, glm_prediction_best_alpha, rf_prediction_best_alpha,
          xgb_prediction_best_alpha, simple_mean_ensemble_alpha, similarity_ensemble_alpha,
          divergence_ensemble_alpha) %>% 
@@ -407,6 +427,17 @@ predictions <- FORECAST %>% rbindlist() %>%
   select(-date, -symbol)
 
 regressionEvaluation(label = predictions$opti_alpha, predictions = predictions %>% select(-opti_alpha)) 
+
+## Evaluate Classification Quality
+predictions <- FORECAST %>% rbindlist() %>%
+  select(glm_prediction_best, rf_prediction_best, xgb_prediction_best,
+         simple_mean_ensemble,similarity_ensemble, divergence_ensemble,
+         alpha) %>% 
+  apply(.,2, function(x){ifelse(x>0,1,0)}) %>% 
+  as.data.frame() %>% 
+  mutate_all(as.factor)
+
+classificationEvaluation(label = ifelse(test_1$model_test$label>0,1,0) %>% as.factor(),  classification_prediction = predictions)
 
 ## beta
 predictions <- FORECAST %>% rbindlist() %>%
@@ -466,15 +497,15 @@ Returns <- c("EXV6.DE", "EXH1.DE", "EXV1.DE", "EXV4.DE", "EXV5.DE",
 # Construct Weighting ----------------------------------------------------------
 equal_weight <- multiSignalTest(SIGNAL = SIGNALS, RETURN = Returns,
                                 BENCHMARK = BENCHMARK, WEIGHTING = NULL,
-                                BETA_EXPOSURE = 0, with_ranking = FALSE)
+                                BETA_EXPOSURE = 0, with_ranking = TRUE)
 old_beta_weight <- multiSignalTest(SIGNAL = SIGNALS, RETURN = Returns,
                                    BENCHMARK = BENCHMARK,
                                    WEIGHTING = OLD_BETA_WEIGHTING,
-                                   BETA_EXPOSURE = 0, with_ranking = FALSE)
+                                   BETA_EXPOSURE = 0, with_ranking = TRUE)
 beta_weight <- multiSignalTest(SIGNAL = SIGNALS, RETURN = Returns,
                                BENCHMARK = BENCHMARK,
                                WEIGHTING = BETA_WEIGHTING,
-                               BETA_EXPOSURE = 0, with_ranking = FALSE)
+                               BETA_EXPOSURE = 0, with_ranking = TRUE)
 # Evaluate ---------------------------------------------------------------------
 # Daily Rebalancing ----
 ## Equal Weight
