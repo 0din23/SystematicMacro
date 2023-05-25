@@ -166,10 +166,10 @@ feature_data <- feature_data[[1]]
 
 # Preprocessing Data -----------------------------------------------------------
 df_decom <- RES_market[[2]][[2]] %>%
-  filter(names == "Automobile") %>% 
+  filter(names == "Industrials") %>% 
   select(-names)
 h <- 21
-label_col <- "alpha"
+label_col <- "return"
 split_prop <- 0.7
 
 ## Filter Features

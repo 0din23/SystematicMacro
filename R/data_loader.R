@@ -17,7 +17,6 @@ data_loader <- function(KEYS, SOURCE, NAMES = NULL, LAG = NULL){
       mutate(date = date + LAG) %>% 
       select(symbol, date, value = price)
     
-    return(res)
   } else if(SOURCE == "BB"){
     
     res <- pdfetch::pdfetch_BUNDESBANK(identifiers = KEYS) %>% 
@@ -37,8 +36,16 @@ data_loader <- function(KEYS, SOURCE, NAMES = NULL, LAG = NULL){
         mutate(date = as.Date(date) + LAG) %>% 
         select(symbol, date, value) 
     }
-    return(res)
-  }
+      
+    } else if(SOURCE == "QUANDL"){
+      res <- tq_get(KEYS, get = "quandl", from = "1900-01-01") %>% 
+        left_join(., NAMES, by = c("symbol"="KEY")) %>% 
+        select(-symbol)  %>% 
+        rename(symbol = EXPL) %>% 
+        left_join(., LAG, by = c("symbol" = "EXPL"))
+    
+    }
+  return(res)
 }
 
 data_loader_df <- function(df){
