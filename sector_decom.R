@@ -169,7 +169,7 @@ df_decom <- RES_market[[2]][[2]] %>%
   filter(names == "Industrials") %>% 
   select(-names)
 h <- 21
-label_col <- "return"
+label_col <- "alpha"
 split_prop <- 0.7
 
 ## Filter Features

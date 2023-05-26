@@ -3,3 +3,4 @@ CONFIG <- function(STR){
     return("C:/0cap_2/MacroMan/SystematicMacro/data/meta_features.xlsx")
   }
 }
+quandl_api_key("YjcYtntQykd9hXCpk6CZ")
