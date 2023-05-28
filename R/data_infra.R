@@ -1,6 +1,6 @@
 # Inputs
 source("R/dependencies.R")
-START_DATE <- "2010-01-01"
+START_DATE <- "2008-01-01"
 NA_TH <- 260
 
 #Get Metadata and Setup
@@ -66,7 +66,20 @@ data[[4]] <- data[[3]] %>%
   mutate(
     Gold_Copper_Ratio = Gold_Price / Copper_Price,
     Oil_Copper_Ratio = Oil_Price / Copper_Price,
-    Gold_Oil_Ratio = Gold_Price / Oil_Price
+    Gold_Oil_Ratio = Gold_Price / Oil_Price,
+    
+    INFLATION_DIFF_US_EU = RETURN(CPI_US,260) - RETURN(CPI_EUR),
+    INFLATION_DIFF_UK_EU = RETURN(CPI_UK,260) - RETURN(CPI_EUR),
+    INFLATION_DIFF_AUD_EU = RETURN(CPI_AUD,260) - RETURN(CPI_EUR),
+    INFLATION_DIFF_CAD_EU = RETURN(CPI_CAD,260) - RETURN(CPI_EUR),
+    INFLATION_DIFF_NZD_EU = RETURN(CPI_NZD,260) - RETURN(CPI_EUR),
+    
+    HARM_UNEM_DIFF_US_EU = HARM_UNEM_US - HARM_UNEM_EU,
+    HARM_UNEM_DIFF_UK_EU = HARM_UNEM_UK - HARM_UNEM_EU,
+    HARM_UNEM_DIFF_AUD_EU = HARM_UNEM_AUD - HARM_UNEM_EU,
+    HARM_UNEM_DIFF_CAD_EU = HARM_UNEM_CAD - HARM_UNEM_EU,
+    HARM_UNEM_DIFF_NZD_EU = HARM_UNEM_NZD - HARM_UNEM_EU
+    
   ) %>% 
   pivot_longer(data=., names_to = "symbol",
                cols = colnames(.)[(colnames(.) != "date")])
@@ -137,10 +150,11 @@ data[[4]] <- data[[4]] %>%
 
 # 5. Filter Features
 ## 5.1. Label unrelated filtering
+data[[4]] %>% select(contains("UNEM"), contains("CPI"), contains("INFLATION"), contains("REER")) %>% ncol
 
 ### 5.1.1. To many NA
 data[[4]] <- data[[4]] %>% 
-  na_col_filter(df= , th=300)
+  na_col_filter(df= , th=600)
 
 ### 5.1.2. Stationarity
 stat_filter <- data[[4]] %>% 

@@ -12,9 +12,12 @@ data_loader <- function(KEYS, SOURCE, NAMES = NULL, LAG = NULL){
   } else if(SOURCE == "FRED"){
     
     res <- tq_get(KEYS, from = "1900-01-01", get = "economic.data") %>% 
+      left_join(., NAMES, by = c("symbol"="KEY")) %>% 
+      select(-symbol)  %>% 
+      rename(symbol = EXPL) %>% 
       left_join(., LAG, by = c("symbol" = "EXPL")) %>% 
-      mutate(date = date + LAG) %>% 
-      select(symbol, date, value = price)
+      mutate(date = as.Date(date) + LAG) %>% 
+      select(symbol, date, value=price)
     
   } else if(SOURCE == "BB"){
     

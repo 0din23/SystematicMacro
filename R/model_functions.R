@@ -9,7 +9,7 @@ regressionEvaluation <- function(label, predictions){
                 "rsq_adj" = reg$adj.r.squared,
                 "rmse" = RMSE(.resid = (label - x), na.rm = T),
                 "mae" = MAE(.resid = (label - x), na.rm = T),
-                "same_dir" = mean((x>=0) & (label >= 0), na.rm=T)
+                "same_dir" = mean((x>0) == (label > 0), na.rm=T)
               ) %>% 
                 return()
             }) %>%
@@ -42,6 +42,7 @@ evaluateMomentumStrategy <- function(df, benchmark, weights){
     reg <- lm(df[[colnames(res)[k]]] ~ df[[benchmark]])
     res["alpha",k] <- reg$coefficients[1]
     res["beta",k] <- reg$coefficients[2]
+    res["benchmark_cor",k] <- cor(df[[colnames(res)[k]]], df[[benchmark]])
   }
   
   ## Calculate Turnover
@@ -55,6 +56,69 @@ evaluateMomentumStrategy <- function(df, benchmark, weights){
     
   }
   return(res %>% round(.,3))
+}
+
+# Ranking Test #################################################################
+rank_test <- function(df, strats){
+  
+  ## Calculate label Ranking
+  label_rank <- df %>% 
+    select(date, names, all_of(c("opti_alpha"))) %>% 
+    pivot_wider(.,names_from = names,
+                values_from = "opti_alpha") %>% 
+    .[,-1] %>% 
+    apply(.,1,rank) %>%
+    t() %>%
+    as.data.frame() %>% 
+    mutate(date = df$date %>%unique()) %>% 
+    pivot_longer(.,cols = colnames(.)[!(colnames(.) %in% c("date", "names"))], 
+                 values_to = "opti_alpha")
+  
+  ## Calculate Ranking Correlation
+  for(k in 1:length(strats)){
+    strat_rank <- df %>% 
+      select(date, names, all_of(strats[k])) %>% 
+      pivot_wider(.,names_from = names,
+                  values_from = strats[k]) %>% 
+      .[,-1] %>% 
+      apply(.,1,rank) %>%
+      t() %>%
+      as.data.frame() %>% 
+      mutate(date = df$date %>%unique()) %>% 
+      pivot_longer(.,cols = colnames(.)[!(colnames(.) %in% c("date", "names"))],
+                   values_to = strats[k])
+    
+    label_rank <- label_rank %>% 
+      left_join(., strat_rank)
+  }
+  
+  ### label rank CoMa
+  res <- list()
+  res$label_rank_CoMa <- label_rank %>% 
+    select(-c(date, name)) %>% 
+    cor()
+  
+  
+  ### Intra sector rank
+  res$intra_sector <- label_rank %>% 
+    select(-date) %>% 
+    pull(name) %>% 
+    unique() %>% 
+    lapply(.,function(x){
+      temp <- label_rank %>% 
+        filter(name == x) %>% 
+        select(-c(date, name)) %>% 
+        cor() %>% 
+        as.data.frame() %>% 
+        slice(-1)%>% 
+        mutate(symbol = x,
+               signal = rownames(.)) %>% 
+        select(symbol, signal, opti_alpha)
+      
+      return(temp)
+    }) %>% rbindlist()
+  
+  return(res)
 }
 
 

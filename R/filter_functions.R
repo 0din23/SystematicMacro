@@ -120,21 +120,112 @@ feature_selection_filter <- function(df, split_prop, label_df, h, reg_q = 0.05, 
   df[,c(colnames(df)[!(colnames(df) %in% col_filter)])] %>% colnames()
 }
 
+linear_filter <- function(df, split_prop, label_df, h, r2_th = 0.01, cor_th = 0.8,
+                          max_features = 50){
+  
+  ## split df and preprocess ---------------------------------------------------
+  label_col <- label_df %>% colnames() %>% .[2]
+  label_df[,label_col] <- label_df[,label_col] %>% shift(-h)
+  
+  
+  df <- df %>%
+    head(round(nrow(df)*split_prop)) %>% 
+    left_join(label_df, by = "date")
+  df <- df[!is.na(df[,label_col]),]
+  
+  df_1 <- df %>%
+    head(floor(nrow(df)/2)) %>% 
+    na_locf()
+  df_2 <- df %>%
+    tail(ceiling(nrow(df)/2)) %>% 
+    na_locf()
+  
+  ## Check for coefficient flipping --------------------------------------------
+  coef_1 <- df_1 %>%
+    select(-date) %>% 
+    apply(., 2, function(x){
+      reg <- lm(df_1[[label_col]] ~ x)
+      return(reg$coefficients[2])
+    })
+  
+  coef_2 <- df_2 %>%
+    select(-date) %>% 
+    apply(., 2, function(x){
+      reg <- lm(df_2[[label_col]] ~ x)
+      return(reg$coefficients[2])
+  })
+  coef_1 <- ifelse(coef_1 > 0, 1, 0)
+  coef_2 <- ifelse(coef_2 > 0, 1, 0)
+  
+  coef_flip <- coef_1 == coef_2
+  coef_flip <- c(T,coef_flip)
+  df <- df[,coef_flip]
+  
+  ## Predictive filtering ------------------------------------------------------
+  r2 <- df %>%
+    select(-date) %>% 
+    apply(., 2, function(x){
+      reg_sum <- lm(df[[label_col]] ~ x) %>% 
+        summary()
+      return(reg_sum$r.squared)
+    })
+  r2_filter <- r2 >= r2_th
+  r2_filter <- c(T, r2_filter)
+  df <- df[,r2_filter]
+  
+  ## Intercorrelation Filtering ------------------------------------------------
+  ### Calc CoMa
+  CoMa <- df %>% 
+    select(-date) %>% 
+    cor() %>% 
+    as.data.frame()
+  
+  ### Calc R2
+  r2 <- df %>%
+    select(-date) %>% 
+    apply(., 2, function(x){
+      reg_sum <- lm(df[[label_col]] ~ x) %>% 
+        summary()
+      return(reg_sum$r.squared)
+    }) %>%
+    sort(., decreasing = T)
+  
+  ### filter
+  check <- TRUE
+  counter <- 2
+  while(check){
+    
+    #### get correlated features 
+    feature_name <- r2[counter] %>% names()
+    intercor_filter <- CoMa %>%
+      select(all_of(feature_name)) %>% 
+      filter(abs(get(!!feature_name)) >= cor_th & get(!!feature_name) != 1) %>% 
+      rownames()
+    
+    #### delete them
+    r2 <- r2[!(names(r2) %in% intercor_filter)]
+    CoMa <- CoMa[!(rownames(CoMa) %in% intercor_filter), !(colnames(CoMa) %in% intercor_filter)]
+    
+    #### Check counter 
+    counter <- counter + 1
+    if(counter == length(r2)){check <- F}
+  }
+  
+  ### Cull them
+  r2_filter <- r2 %>%
+    sort(., decreasing = T) %>% 
+    head(max_features) %>%
+    names()
+  r2_filter <- c("date", r2_filter)
+  r2_filter <- colnames(df) %in% r2_filter
+  df <- df[,r2_filter]
+  
+  df %>%
+    select(-all_of(label_col)) %>% 
+    colnames() %>%
+    return()
+}
 
-# Impute 
-# impute_values <- function(df,){
-# 
-#   col_type <- df %>% 
-#     lapply(.,class) %>%
-#     unlist()
-#   col_filter <- col_type == "numeric"
-#   
-#   for(k in 1:ncol(df)){
-#     if(col_filter[k]){
-#       df[,k] <-  SMA()
-#     }
-#   }
-# }
 
 
 

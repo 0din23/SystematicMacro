@@ -17,7 +17,8 @@ momentumRanking <- function(SIGNAL){
 }
 
 momentumPortfolio <- function(RANKING, WEIGHTING = NULL, BETA_EXPOSURE = 0,
-                              FREQ = "daily", is_ranking =TRUE){
+                              FREQ = "daily", is_ranking =TRUE, ranking_quantile = 0.5,
+                              EXPOSURES = NULL){
   ## Equal weighting
   if(is.null(WEIGHTING)){
     
@@ -26,10 +27,11 @@ momentumPortfolio <- function(RANKING, WEIGHTING = NULL, BETA_EXPOSURE = 0,
       apply(.,1,function(x){
         
         if(is_ranking){
-          w <- ifelse(x>=median(x), 1,-1) / length(x)
+          cut <- quantile(x, probs = ranking_quantile) %>% as.numeric()
+          w <- ifelse(x>=cut, 1,-1) / length(x)
           w[w>0] <- w[w>0] * (1+BETA_EXPOSURE) 
         } else{
-          w <- ifelse(x>=0, 1,-1) / length(x)
+          w <- ifelse(x>0, 1,-1) / length(x)
           w[w>0] <- w[w>0] * (1+BETA_EXPOSURE)
         }
         
@@ -103,6 +105,11 @@ momentumPortfolio <- function(RANKING, WEIGHTING = NULL, BETA_EXPOSURE = 0,
     colnames(WEIGHTS)[1] <- "date"
   }
   
+  ## Null Exposures 
+  if(!is.null(EXPOSURES)){
+    
+  }
+  
   ## Rebalancing
   if(FREQ != "daily"){
     WEIGHTS$rebalance <- FALSE
@@ -115,7 +122,8 @@ momentumPortfolio <- function(RANKING, WEIGHTING = NULL, BETA_EXPOSURE = 0,
 } 
 
 momentumStrategy <- function(SIGNAL, RETURN, BENCHMARK, WEIGHTING = NULL,
-                             BETA_EXPOSURE = 0, FREQ = "daily", with_ranking = TRUE){
+                             BETA_EXPOSURE = 0, FREQ = "daily", with_ranking = TRUE,
+                             ranking_quantile = 0.5, EXPOSURES = NULL){
   
   ## calculate Ranking
   if(with_ranking){
@@ -129,7 +137,8 @@ momentumStrategy <- function(SIGNAL, RETURN, BENCHMARK, WEIGHTING = NULL,
   }
   
   ## calculate Weighting
-  WEIGHTS <- momentumPortfolio(RANKING, WEIGHTING, BETA_EXPOSURE, FREQ, is_ranking = with_ranking)
+  WEIGHTS <- momentumPortfolio(RANKING, WEIGHTING, BETA_EXPOSURE, FREQ, is_ranking = with_ranking,
+                               ranking_quantile = ranking_quantile, EXPOSURES = EXPOSURES)
   
   ## Shift Date since we can only trade on the next day
   WEIGHTS$date <- c(WEIGHTS$date[-1],NA)
@@ -146,7 +155,8 @@ momentumStrategy <- function(SIGNAL, RETURN, BENCHMARK, WEIGHTING = NULL,
 }
 
 multiSignalTest <- function(SIGNAL, RETURN, BENCHMARK, WEIGHTING = NULL,
-                            BETA_EXPOSURE = 0, with_ranking = TRUE){
+                            BETA_EXPOSURE = 0, with_ranking = TRUE, ranking_quantile = 0.5,
+                            EXPOSURES = NULL){
   
   ## return Object
   RES <- list()
@@ -168,7 +178,9 @@ multiSignalTest <- function(SIGNAL, RETURN, BENCHMARK, WEIGHTING = NULL,
                                                  WEIGHTING = WEIGHTING,
                                                  BETA_EXPOSURE = BETA_EXPOSURE,
                                                  FREQ = "daily",
-                                                 with_ranking = with_ranking)
+                                                 with_ranking = with_ranking,
+                                                 ranking_quantile = ranking_quantile,
+                                                 EXPOSURES = EXPOSURES)
     
     RES$weekly[[temp_signal]] <- momentumStrategy(SIGNAL = temp_sig,
                                                   RETURN = RETURN,
@@ -176,7 +188,9 @@ multiSignalTest <- function(SIGNAL, RETURN, BENCHMARK, WEIGHTING = NULL,
                                                   WEIGHTING = WEIGHTING,
                                                   BETA_EXPOSURE = BETA_EXPOSURE,
                                                   FREQ = "weekly", 
-                                                  with_ranking = with_ranking)
+                                                  with_ranking = with_ranking,
+                                                  ranking_quantile = ranking_quantile,
+                                                  EXPOSURES = EXPOSURES)
     
     RES$monthly[[temp_signal]] <- momentumStrategy(SIGNAL = temp_sig,
                                                    RETURN = RETURN,
@@ -184,7 +198,9 @@ multiSignalTest <- function(SIGNAL, RETURN, BENCHMARK, WEIGHTING = NULL,
                                                    WEIGHTING = WEIGHTING,
                                                    BETA_EXPOSURE = BETA_EXPOSURE,
                                                    FREQ = "monthly", 
-                                                   with_ranking = with_ranking)
+                                                   with_ranking = with_ranking,
+                                                   ranking_quantile = ranking_quantile,
+                                                   EXPOSURES = EXPOSURES)
     
     ## Construct Evaluation
     if(k == 3){
@@ -199,22 +215,17 @@ multiSignalTest <- function(SIGNAL, RETURN, BENCHMARK, WEIGHTING = NULL,
     } else{
       
       RES$eval$daily <- RES$eval$daily %>% 
-        left_join(.,RES$daily[[temp_signal]] %>% select(date, return),
-                  by =c("date"))
+        left_join(.,RES$daily[[temp_signal]] %>% select(date, return),by =c("date"))
       
       RES$eval$weekly <- RES$eval$weekly %>% 
-        left_join(.,RES$weekly[[temp_signal]] %>% select(date, return),
-                  by =c("date"))
+        left_join(.,RES$weekly[[temp_signal]] %>% select(date, return),by =c("date"))
       
       RES$eval$monthly <- RES$eval$monthly %>% 
-        left_join(.,RES$monthly[[temp_signal]] %>% select(date, return),
-                  by =c("date"))   
+        left_join(.,RES$monthly[[temp_signal]] %>% select(date, return), by =c("date"))   
       
       colnames(RES$eval$daily)[colnames(RES$eval$daily) == "return"] <- temp_signal
-      colnames(RES$eval$weekly)[colnames(RES$eval$weekly) == "return"] <-
-        temp_signal
-      colnames(RES$eval$monthly)[colnames(RES$eval$monthly) == "return"] <-
-        temp_signal
+      colnames(RES$eval$weekly)[colnames(RES$eval$weekly) == "return"] <-temp_signal
+      colnames(RES$eval$monthly)[colnames(RES$eval$monthly) == "return"] <-temp_signal
     }
   }
   
