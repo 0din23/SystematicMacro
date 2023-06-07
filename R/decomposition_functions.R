@@ -93,4 +93,75 @@ gen_decompose <- function(df_return, regression_lag){
 }
 
 
+cor_Clustering <- function(){
+  
+  CoMa <- df %>% 
+    select(-date) %>% 
+    cor() %>% 
+    as.data.frame()
+
+  DiMa <- CoMa %>% 
+    apply(.,2,function(x){
+      1-x
+    }) %>% 
+    as.data.frame()
+  
+  ## Create initila Clusters
+  Clusters <- DiMa
+  res <- list()
+  
+  for(k in 1:ncol(Clusters)){
+    
+    ## Find Cluster
+    min_dist <- min(Clusters[Clusters!=0])
+    if(abs(min_dist) >= 0.8) {
+      break
+    }
+    temp_cl <- Clusters %>% 
+      apply(.,2,function(x){min(Clusters[Clusters!=0]) %in% x}) 
+    temp_cl <- temp_cl[temp_cl] %>% names()
+    
+    ## Check if already cluster, if not create if yes, add
+    if(sum(temp_cl %in% names(res)) == 1){
+      
+      ### Find the cluster 
+      cluster_no <- temp_cl[temp_cl %in% names(res)]
+      new_add <- temp_cl[!(temp_cl %in% names(res))]
+      res[[cluster_no]] <-  res[[cluster_no]] %>% append(., new_add)
+      
+    } else if(sum(temp_cl %in% names(res)) == 2){
+      print("Done")
+      break
+    } else{
+      cluster_no <- paste0("Cluster_", length(res)+1)
+      res[[cluster_no]]<- temp_cl
+    }
+    
+    ## create new DiMa
+    Clusters_new <- Clusters[!(rownames(Clusters) %in% temp_cl), !(colnames(Clusters) %in% temp_cl)]
+    
+    ### If something has to be added to a cluster
+    if(sum(temp_cl %in% names(res)) != 0){
+      cluster_size <- length(res[[cluster_no]])
+      cluster_distance <- Clusters[!(rownames(Clusters) %in% temp_cl), (colnames(Clusters) %in% temp_cl)]
+      cluster_distance[,new_add] <- cluster_distance[,new_add] * (1/cluster_size)
+      cluster_distance[,cluster_no] <- cluster_distance[,cluster_no] * ((cluster_size-1)/cluster_size)
+      cluster_distance <- cluster_distance %>% rowSums()
+      
+    } else{
+      cluster_distance <- Clusters[!(rownames(Clusters) %in% temp_cl), (colnames(Clusters) %in% temp_cl)] %>% 
+        rowMeans()
+    }
+    
+    Clusters_new[,cluster_no] <- cluster_distance
+    Clusters_new <- Clusters_new %>% 
+      rbind(., c(cluster_distance,0))
+    
+    rownames(Clusters_new)[nrow(Clusters_new)] <- cluster_no
+    Clusters <- Clusters_new
+  }
+  
+}
+
+
 

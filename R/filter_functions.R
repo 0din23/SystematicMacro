@@ -141,16 +141,18 @@ linear_filter <- function(df, split_prop, label_df, h, r2_th = 0.01, cor_th = 0.
     na_locf()
   
   ## Check for coefficient flipping --------------------------------------------
+  print("Check for Coefficient Flips")
   coef_1 <- df_1 %>%
     select(-date) %>% 
-    apply(., 2, function(x){
+    #select(1:20) %>% 
+    pbapply(., 2, function(x){
       reg <- lm(df_1[[label_col]] ~ x)
       return(reg$coefficients[2])
     })
   
   coef_2 <- df_2 %>%
     select(-date) %>% 
-    apply(., 2, function(x){
+    pbapply(., 2, function(x){
       reg <- lm(df_2[[label_col]] ~ x)
       return(reg$coefficients[2])
   })
@@ -162,9 +164,10 @@ linear_filter <- function(df, split_prop, label_df, h, r2_th = 0.01, cor_th = 0.
   df <- df[,coef_flip]
   
   ## Predictive filtering ------------------------------------------------------
+  print("Check for predictiction ability")
   r2 <- df %>%
     select(-date) %>% 
-    apply(., 2, function(x){
+    pbapply(., 2, function(x){
       reg_sum <- lm(df[[label_col]] ~ x) %>% 
         summary()
       return(reg_sum$r.squared)
@@ -174,6 +177,7 @@ linear_filter <- function(df, split_prop, label_df, h, r2_th = 0.01, cor_th = 0.
   df <- df[,r2_filter]
   
   ## Intercorrelation Filtering ------------------------------------------------
+  print("Check for Colinearity")
   ### Calc CoMa
   CoMa <- df %>% 
     select(-date) %>% 
@@ -183,7 +187,7 @@ linear_filter <- function(df, split_prop, label_df, h, r2_th = 0.01, cor_th = 0.
   ### Calc R2
   r2 <- df %>%
     select(-date) %>% 
-    apply(., 2, function(x){
+    pbapply(., 2, function(x){
       reg_sum <- lm(df[[label_col]] ~ x) %>% 
         summary()
       return(reg_sum$r.squared)
@@ -197,6 +201,7 @@ linear_filter <- function(df, split_prop, label_df, h, r2_th = 0.01, cor_th = 0.
     
     #### get correlated features 
     feature_name <- r2[counter] %>% names()
+    feature_name <- feature_name[feature_name %in% colnames(CoMa)]
     intercor_filter <- CoMa %>%
       select(all_of(feature_name)) %>% 
       filter(abs(get(!!feature_name)) >= cor_th & get(!!feature_name) != 1) %>% 

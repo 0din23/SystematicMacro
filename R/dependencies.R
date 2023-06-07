@@ -1,4 +1,12 @@
 # Dependencies
+library(tidyverse)
+library(tidyquant)
+library(ggplot2)
+library(fpp3)
+library(tsibble)
+library(fable)
+library(lubridate)
+
 library(tidymodels)
 library(tidyverse)
 library(tidyquant)
@@ -21,6 +29,9 @@ library(forecast)
 library(zoo)
 library(imputeTS)
 library(pbapply)
+library(ape)
+library(igraph)
+library(signnet)
 
 ## Source Scripts
 source("R/decomposition_functions.R")
