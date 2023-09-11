@@ -63,7 +63,7 @@ reg %>% summary()
 
 
 ################################################################################
-# GENERATE MOMENTUM SIGNALS #
+# GENERATE SIGNALS #
 ################################################################################
 
 # absolute Return Momentum (for dollar neutral LS and LO)
@@ -149,6 +149,55 @@ excessreturn <- c(5, 10, 20, 60, 120) %>%
         return(tmp)
       }) %>% 
       rbindlist()
+    
+    ranking <- temp_df %>% 
+      select(names, date, Momentu_sig) %>% 
+      pivot_wider(names_from = names, values_from = Momentu_sig) %>% 
+      .[,-1] %>% 
+      apply(.,1,rank) %>% 
+      t() %>% 
+      data.frame(
+        "date"=temp_df$date %>% unique(),
+        .
+      ) %>% 
+      pivot_longer(., cols = colnames(.)[colnames(.)!="date"],
+                   names_to = "names", values_to = "Momentum_sig_rank")
+    
+    result <-  temp_df %>% 
+      select(names, date, Momentum_ret) %>% 
+      pivot_wider(names_from = names, values_from = Momentum_ret) %>% 
+      .[,-1] %>% 
+      apply(.,1,rank) %>% 
+      t() %>% 
+      data.frame(
+        "date"=temp_df$date %>% unique(),
+        .
+      ) %>% 
+      pivot_longer(., cols = colnames(.)[colnames(.)!="date"],
+                   names_to = "names", values_to = "Momentum_ret_rank")
+    
+    res <- temp_df %>% 
+      left_join(., ranking) %>% 
+      left_join(., result) %>% 
+      mutate("LAG"=x)
+    
+    return(res)
+  }) %>% 
+  rbindlist()
+
+# Volatility Signals -----------------------------------------------------------
+absVol <- c(1, 5, 10, 20, 60, 120) %>% 
+  lapply(., function(x){
+    
+    # generate Signal
+    temp_df <- data  %>% 
+      group_by(names) %>% 
+      mutate(
+        Vol_sig = RETURN(adjusted, x) %>% lag(),
+        Vol_ret = RETURN(adjusted,x) %>% shift(-(x-1))
+      ) %>% 
+      select(names, date, Momentu_sig, Momentum_ret) %>% 
+      ungroup(names)
     
     ranking <- temp_df %>% 
       select(names, date, Momentu_sig) %>% 
@@ -422,19 +471,103 @@ excessreturn %>%
 ################################################################################
 
 # Long ony Backtest ------------------------------------------------------------
-## Equal Weighting
-absReturn
+BETA=1
+MAX_POSITION=0.4
+MIN_POSITION = 0.05
+DOLLAR=1
+LONG_LEG_DOLLAR=1
+SHORT_LEG_DOLLAR=0
+
+# Backtest for the absolute return ---------------------------------------------
+SIGNAL <- excessreturn %>%
+  filter(LAG==5) %>% 
+  na.omit() %>% 
+  mutate(SIGNAL = ifelse(Momentum_sig_rank>6,1,0)) %>% 
+  select(date, names, SIGNAL)
+
+OBJECTIVES <- absReturn %>%
+  filter(LAG==5) %>% 
+  na.omit() %>% 
+  mutate(OBJECTIVE = Momentum_sig_rank) %>% 
+  select(date, names, OBJECTIVE)
+
+
+res <- BacktestEngine_1(RETURNS = df_return, OBJECTIVES = OBJECTIVES, SIGNAL = SIGNAL, BETAS = DEC %>% select(date, names, ß_Mkt),
+                 REBALANCE_FREQ = "weekly",
+                 BETA = 1,
+                 MAX_POSITION = 0.4,
+                 MIN_POSITION = 0.05,
+                 DOLLAR = 1,
+                 LONG_LEG_DOLLAR = 1,
+                 SHORT_LEG_DOLLAR = 0)
 
 
 
+plot_df <- tester$portfolio %>% 
+  left_join(., Benchmark) %>% 
+  arrange(date) %>% 
+  replace(is.na(.), 0) %>% 
+  mutate(Portfolio =cum.ret(portfolio_return),
+         Benchmark = cum.ret(Mkt)) 
+plot_df %>% 
+  ggplot(.) +
+  geom_line(aes(x=date, y=Portfolio, color = "Portfolio")) +
+  geom_line(aes(x=date, y=Benchmark, color = "Benchmark")) +
+  theme_tq()
+
+lm(plot_df$portfolio_return ~ plot_df$Mkt) %>% summary()
 
 
 
+# Long Short -------------------------------------------------------------------
+SIGNAL <- excessreturn %>%
+  filter(LAG==20) %>% 
+  na.omit() %>% 
+  mutate(SIGNAL = ifelse(Momentum_sig_rank>6,1,-1)) %>% 
+  select(date, names, SIGNAL)
+
+OBJECTIVES <- excessreturn %>%
+  filter(LAG==20) %>% 
+  na.omit() %>% 
+  left_join(., DEC %>% select(date, names, ß_Mkt)) %>% 
+  mutate(OBJECTIVE = 1 / ß_Mkt) %>% 
+  select(date, names, OBJECTIVE)
 
 
-# Develope Portfolio Construction Function
+res <- BacktestEngine_1(RETURNS = df_return, OBJECTIVES = OBJECTIVES, SIGNAL = SIGNAL,
+                        BETAS = DEC %>% select(date, names, ß_Mkt),
+                        REBALANCE_FREQ = "monthly",
+                        BETA = 1,
+                        MAX_POSITION = 0.4,
+                        MIN_POSITION = 0.05,
+                        DOLLAR = 0,
+                        LONG_LEG_DOLLAR = 1,
+                        SHORT_LEG_DOLLAR = 1)
 
 
 
+plot_df <- res$portfolio %>% 
+  left_join(., Benchmark) %>% 
+  arrange(date) %>% 
+  replace(is.na(.), 0) %>% 
+  mutate(Portfolio =cum.ret(portfolio_return),
+         Benchmark = cum.ret(Mkt)) 
+plot_df %>% 
+  ggplot(.) +
+  geom_line(aes(x=date, y=Portfolio, color = "Portfolio")) +
+  geom_line(aes(x=date, y=Benchmark, color = "Benchmark")) +
+  # geom_line(aes(x=date, y=0.5*(Portfolio + Benchmark), color = "MIX")) +
+  theme_tq()
 
-  
+lm(plot_df$portfolio_return ~ plot_df$Mkt) %>% summary()
+
+sd(plot_df$portfolio_return, na.rm = T) *sqrt(252)
+sd(plot_df$Mkt, na.rm = T) *sqrt(252)
+
+tail(plot_df$Portfolio,1)^(252/nrow(plot_df))-1
+tail(plot_df$Benchmark,1)^(252/nrow(plot_df))-1
+   
+(tail(plot_df$Portfolio,1)^(252/nrow(plot_df))-1)/(sd(plot_df$portfolio_return, na.rm = T) *sqrt(252))
+(tail(plot_df$Benchmark,1)^(252/nrow(plot_df))-1)/(sd(plot_df$Mkt, na.rm = T) *sqrt(252))
+cor(plot_df$portfolio_return, plot_df$Mkt)   
+   
