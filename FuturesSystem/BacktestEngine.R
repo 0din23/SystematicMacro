@@ -107,22 +107,22 @@ BacktestEngine_1 <- function(RETURNS, OBJECTIVES, SIGNAL, BETAS, REBALANCE_FREQ=
   return(list("portfolio"=final_res,
               "contribution"=res))
 }
-
-
-tester <- final_res %>% 
-  left_join(., Benchmark) %>% 
-  mutate(portEquity = cum.ret(portfolio_return),
-         benchEquity = cum.ret(Mkt))
-tester %>% 
-  ggplot(.) +
-  geom_line(aes(x=date, y=portEquity, color="Portfolio")) +
-  geom_line(aes(x=date, y=benchEquity, color="Benchmark")) +
-  theme_tq()
-
-res %>% 
-  select(date, names, weight) %>% 
-  ggplot(.) +
-  geom_line(aes(x=date, y=weight, color=names))
+# 
+# 
+# tester <- final_res %>% 
+#   left_join(., Benchmark) %>% 
+#   mutate(portEquity = cum.ret(portfolio_return),
+#          benchEquity = cum.ret(Mkt))
+# tester %>% 
+#   ggplot(.) +
+#   geom_line(aes(x=date, y=portEquity, color="Portfolio")) +
+#   geom_line(aes(x=date, y=benchEquity, color="Benchmark")) +
+#   theme_tq()
+# 
+# res %>% 
+#   select(date, names, weight) %>% 
+#   ggplot(.) +
+#   geom_line(aes(x=date, y=weight, color=names))
 
 # Maximises a first order objective based on some constraints
 PortfolioOptimizer <- function(objectives, exposure, beta,

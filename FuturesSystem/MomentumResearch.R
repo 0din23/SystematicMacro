@@ -186,22 +186,22 @@ excessreturn <- c(5, 10, 20, 60, 120) %>%
   rbindlist()
 
 # Volatility Signals -----------------------------------------------------------
-absVol <- c(1, 5, 10, 20, 60, 120) %>% 
+absVol <- c(5, 10, 20, 60, 120) %>% 
   lapply(., function(x){
     
     # generate Signal
     temp_df <- data  %>% 
       group_by(names) %>% 
       mutate(
-        Vol_sig = RETURN(adjusted, x) %>% lag(),
+        Vol_sig = c(rep(NA,x-1),rollapply(adjusted, width=x,  function(col){sd(RETURN(col,1),na.rm=T)})) %>% lag(),
         Vol_ret = RETURN(adjusted,x) %>% shift(-(x-1))
       ) %>% 
-      select(names, date, Momentu_sig, Momentum_ret) %>% 
+      select(names, date, Vol_sig, Vol_ret) %>% 
       ungroup(names)
     
     ranking <- temp_df %>% 
-      select(names, date, Momentu_sig) %>% 
-      pivot_wider(names_from = names, values_from = Momentu_sig) %>% 
+      select(names, date, Vol_sig) %>% 
+      pivot_wider(names_from = names, values_from = Vol_sig) %>% 
       .[,-1] %>% 
       apply(.,1,rank) %>% 
       t() %>% 
@@ -210,11 +210,11 @@ absVol <- c(1, 5, 10, 20, 60, 120) %>%
         .
       ) %>% 
       pivot_longer(., cols = colnames(.)[colnames(.)!="date"],
-                   names_to = "names", values_to = "Momentum_sig_rank")
+                   names_to = "names", values_to = "Vol_sig_rank")
     
     result <-  temp_df %>% 
-      select(names, date, Momentum_ret) %>% 
-      pivot_wider(names_from = names, values_from = Momentum_ret) %>% 
+      select(names, date, Vol_ret) %>% 
+      pivot_wider(names_from = names, values_from = Vol_ret) %>% 
       .[,-1] %>% 
       apply(.,1,rank) %>% 
       t() %>% 
@@ -223,7 +223,7 @@ absVol <- c(1, 5, 10, 20, 60, 120) %>%
         .
       ) %>% 
       pivot_longer(., cols = colnames(.)[colnames(.)!="date"],
-                   names_to = "names", values_to = "Momentum_ret_rank")
+                   names_to = "names", values_to = "Vol_ret_rank")
     
     res <- temp_df %>% 
       left_join(., ranking) %>% 
@@ -250,10 +250,19 @@ absReturn %>%
   ) 
 
 excessreturn %>% 
+  na.omit() %>% 
   select(c(LAG, Momentum_sig_rank, Momentum_ret_rank)) %>% 
   group_by(LAG) %>% 
   summarize(
     "rank_corr" = cor(Momentum_sig_rank, Momentum_ret_rank)
+  ) 
+
+absVol %>% 
+  na.omit() %>% 
+  select(c(LAG, Vol_sig_rank, Vol_ret_rank)) %>% 
+  group_by(LAG) %>% 
+  summarize(
+    "rank_corr" = cor(Vol_sig_rank, Vol_ret_rank)
   ) 
 
 ### LS Correlation
@@ -283,6 +292,18 @@ excessreturn %>%
     "ls_corr" = mean(Momentum_succes)-0.5
   ) 
 
+absVol %>% 
+  as.data.frame() %>%
+  na.omit() %>% 
+  mutate(
+    Vol_sig_portfolio = ifelse(Vol_sig_rank>6,1,0),
+    Vol_ret_portfolio = ifelse(Vol_ret_rank>6,1,0),
+    Vol_succes = ifelse(Vol_sig_portfolio == Vol_ret_portfolio, 1,0)
+  ) %>% 
+  group_by(LAG) %>% 
+  summarize(
+    "ls_corr" = mean(Vol_succes)-0.5
+  ) 
 
 ## Sector based
 ### Rank Correlation
@@ -520,21 +541,41 @@ lm(plot_df$portfolio_return ~ plot_df$Mkt) %>% summary()
 
 
 # Long Short -------------------------------------------------------------------
-SIGNAL <- excessreturn %>%
+SIGNAL_Momentum <- excessreturn %>%
   filter(LAG==20) %>% 
   na.omit() %>% 
   mutate(SIGNAL = ifelse(Momentum_sig_rank>6,1,-1)) %>% 
   select(date, names, SIGNAL)
 
-OBJECTIVES <- excessreturn %>%
+
+
+# SIGNAL <- excessreturn %>%
+#   filter(LAG==20) %>% 
+#   na.omit() %>% 
+#   left_join(., absVol %>% filter(LAG==20) %>% select(date, names, Vol_sig_rank)) %>% 
+#   mutate(
+#     AVG_RANK = (Momentum_sig_rank - (Vol_sig_rank -13)) / 2,
+#     SIGNAL = ifelse(Vol_sig_rank>6,1,-1) 
+#   ) %>% 
+#   select(date, names, SIGNAL)
+  
+
+OBJECTIVES_Momentum <- excessreturn %>%
   filter(LAG==20) %>% 
   na.omit() %>% 
   left_join(., DEC %>% select(date, names, ß_Mkt)) %>% 
   mutate(OBJECTIVE = 1 / ß_Mkt) %>% 
   select(date, names, OBJECTIVE)
 
+OBJECTIVES_Momentum <- absVol %>%
+  filter(LAG==20) %>% 
+  na.omit() %>% 
+  mutate(OBJECTIVE = 1/Vol_sig) %>% 
+  select(date, names, OBJECTIVE)
 
-res <- BacktestEngine_1(RETURNS = df_return, OBJECTIVES = OBJECTIVES, SIGNAL = SIGNAL,
+
+res_Momentum <- BacktestEngine_1(RETURNS = df_return, OBJECTIVES = OBJECTIVES_Momentum,
+                                 SIGNAL = SIGNAL_Momentum,
                         BETAS = DEC %>% select(date, names, ß_Mkt),
                         REBALANCE_FREQ = "monthly",
                         BETA = 1,
@@ -545,29 +586,87 @@ res <- BacktestEngine_1(RETURNS = df_return, OBJECTIVES = OBJECTIVES, SIGNAL = S
                         SHORT_LEG_DOLLAR = 1)
 
 
+SIGNAL_Risk <- absVol %>%
+  filter(LAG==20) %>% 
+  na.omit() %>% 
+  mutate(SIGNAL = ifelse(Vol_sig_rank>6,-1,1)) %>% 
+  select(date, names, SIGNAL)
 
-plot_df <- res$portfolio %>% 
+OBJECTIVES_Risk <- excessreturn %>%
+  filter(LAG==20) %>% 
+  na.omit() %>% 
+  mutate(OBJECTIVE = Momentu_sig) %>% 
+  select(date, names, OBJECTIVE)
+
+res_Risk <- BacktestEngine_1(RETURNS = df_return,
+                             OBJECTIVES = OBJECTIVES_Risk,
+                             SIGNAL = SIGNAL_Risk,
+                             BETAS = DEC %>% select(date, names, ß_Mkt),
+                             REBALANCE_FREQ = "monthly",
+                             BETA = 1,
+                             MAX_POSITION = 0.4,
+                             MIN_POSITION = 0.05,
+                             DOLLAR = 0,
+                             LONG_LEG_DOLLAR = 1,
+                             SHORT_LEG_DOLLAR = 1)
+
+
+
+plot_df <- res_Momentum$portfolio %>% 
+  select(date, Momentum_port = portfolio_return) %>% 
+  left_join(., res_Risk$portfolio %>% select(date, Risk_port = portfolio_return)) %>% 
   left_join(., Benchmark) %>% 
   arrange(date) %>% 
   replace(is.na(.), 0) %>% 
-  mutate(Portfolio =cum.ret(portfolio_return),
-         Benchmark = cum.ret(Mkt)) 
+  mutate(
+    combinedStrategy = 0.5 * (Momentum_port + Risk_port),
+    Portfolio_Momentum =cum.ret(Momentum_port),
+    Portfolio_Risk = cum.ret(Risk_port),
+    Benchmark = cum.ret(Mkt),
+    Portfolio_Combination = cum.ret(combinedStrategy)) 
+
 plot_df %>% 
   ggplot(.) +
-  geom_line(aes(x=date, y=Portfolio, color = "Portfolio")) +
+  geom_line(aes(x=date, y=Portfolio_Momentum, color = "Portfolio_Momentum")) +
+  geom_line(aes(x=date, y=Portfolio_Risk, color = "Portfolio_Risk")) +
+  geom_line(aes(x=date, y=Portfolio_Combination, color = "Portfolio_Combination")) +
   geom_line(aes(x=date, y=Benchmark, color = "Benchmark")) +
   # geom_line(aes(x=date, y=0.5*(Portfolio + Benchmark), color = "MIX")) +
   theme_tq()
 
-lm(plot_df$portfolio_return ~ plot_df$Mkt) %>% summary()
+lm(plot_df$Momentum_port ~ plot_df$Mkt) %>% summary()
+lm(plot_df$Risk_port ~ plot_df$Mkt) %>% summary()
+lm(plot_df$combinedStrategy ~ plot_df$Mkt) %>% summary()
 
-sd(plot_df$portfolio_return, na.rm = T) *sqrt(252)
-sd(plot_df$Mkt, na.rm = T) *sqrt(252)
+sd(plot_df$Momentum_port, na.rm = T) * sqrt(252)
+sd(plot_df$Risk_port, na.rm = T) * sqrt(252)
+sd(plot_df$combinedStrategy, na.rm = T) * sqrt(252)
+sd(plot_df$Mkt, na.rm = T) * sqrt(252)
 
-tail(plot_df$Portfolio,1)^(252/nrow(plot_df))-1
+tail(plot_df$Portfolio_Momentum,1)^(252/nrow(plot_df))-1
+tail(plot_df$Portfolio_Risk,1)^(252/nrow(plot_df))-1
+tail(plot_df$Portfolio_Combination,1)^(252/nrow(plot_df))-1
 tail(plot_df$Benchmark,1)^(252/nrow(plot_df))-1
    
-(tail(plot_df$Portfolio,1)^(252/nrow(plot_df))-1)/(sd(plot_df$portfolio_return, na.rm = T) *sqrt(252))
+(tail(plot_df$Portfolio_Momentum,1)^(252/nrow(plot_df))-1)/(sd(plot_df$Momentum_port, na.rm = T) *sqrt(252))
+(tail(plot_df$Portfolio_Risk,1)^(252/nrow(plot_df))-1)/(sd(plot_df$Risk_port, na.rm = T) *sqrt(252))
+(tail(plot_df$Portfolio_Combination,1)^(252/nrow(plot_df))-1)/(sd(plot_df$combinedStrategy, na.rm = T) *sqrt(252))
 (tail(plot_df$Benchmark,1)^(252/nrow(plot_df))-1)/(sd(plot_df$Mkt, na.rm = T) *sqrt(252))
-cor(plot_df$portfolio_return, plot_df$Mkt)   
-   
+
+plot_df %>% select(Momentum_port,Risk_port,combinedStrategy, Mkt) %>% cor()
+
+
+plot_df %>% 
+  select(Momentum_port,Risk_port,combinedStrategy, Mkt) %>% 
+  xts(., order.by=as.Date(plot_df$date)) %>% 
+  maxDrawdown(.)
+
+plot_df %>% 
+  select(Momentum_port,Risk_port,combinedStrategy, Mkt) %>% 
+  xts(., order.by=as.Date(plot_df$date)) %>% 
+  Return.annualized()
+
+plot_df %>% 
+  select(Momentum_port,Risk_port,combinedStrategy, Mkt) %>% 
+  xts(., order.by=as.Date(plot_df$date)) %>% 
+  SharpeRatio.annualized()
