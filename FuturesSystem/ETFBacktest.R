@@ -324,11 +324,11 @@ LSNL_Risk  <- BacktestEngine_1(RETURNS = df_return, OBJECTIVES = OBJECTIVES_Risk
                                SIGNAL = SIGNAL_Risk,
                                BETAS = DEC %>% select(date, names, ß_Mkt),
                                REBALANCE_FREQ = holding_period,
-                               BETA = 0.5,
+                               BETA = 1,
                                MAX_POSITION = max_position,
                                MIN_POSITION = min_position,
-                               DOLLAR = 0.5,
-                               LONG_LEG_DOLLAR = 1.5,
+                               DOLLAR = 1,
+                               LONG_LEG_DOLLAR = 2,
                                SHORT_LEG_DOLLAR = 1)
 
 LSNL_res <- LSNL_Momentum$portfolio %>% 
@@ -351,7 +351,7 @@ LSNL_res <- LSNL_Momentum$portfolio %>%
 
 
 
-LO_res %>% 
+LSNL_res %>% 
   select(Momentum_port,Risk_port,combinedStrategy, Mkt) %>% 
   xts(., order.by=as.Date(LSNL_res$date)) %>% 
   maxDrawdown(.)

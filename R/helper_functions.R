@@ -44,6 +44,11 @@ myEndpoints <- function(date_vec, endpoint){
       week()
     date_vec_2 <- date_vec %>%
       lag()
+  } else if(endpoint == "quarterly"){
+    date_vec <- date_vec %>%
+      quarter()
+    date_vec_2 <- date_vec %>%
+      lag()
   }
   
   return(!(date_vec == date_vec_2))
