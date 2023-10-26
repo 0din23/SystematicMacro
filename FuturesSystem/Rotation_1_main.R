@@ -12,7 +12,7 @@ conn <- RSQLite::dbConnect(RSQLite::SQLite(), DB_FILE)
 tws <- twsConnect() 
 
 # inputs 
-rebalance_subPort <- 1
+rebalance_subPort <- 2
 
 ################################################################################
 # Pull Portfolio Data #
@@ -288,7 +288,8 @@ RSQLite::dbWriteTable(conn, paste0("SUB_PORT_",rebalance_subPort),
 ################################################################################
 
 # To Do
-## Rebalancing 
+## Rebalancing!!! Das kann nicht jedes mal so fuckign teuer sein.
+
 ## Reporting
 ## Improvement process
 
