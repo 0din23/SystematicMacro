@@ -1,0 +1,71 @@
+---
+title: "Portfolio_Report_1"
+author: "Niklas_Knecht"
+date: "2023-10-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+# Dependencies
+library(tidyverse)
+library(tidyquant)
+library(ggplot2)
+library(PortfolioAnalytics) 
+library(IBrokers)
+
+```
+
+
+# Rotation Strategy
+```{r}
+
+# Get Data #####################################################################
+starting_NAV <- 10000
+# Instruments
+INSTRUMENTS <-  data.frame(
+  "ticker" = c("EXV6.DE", "EXH1.DE", "EXV1.DE", "EXV4.DE", "EXV5.DE",
+               "EXH4.DE", "EXV3.DE", "EXV8.DE", "EXH8.DE", "EXH3.DE",
+               "EXV2.DE", "EXH7.DE"),
+  "names" = c("Basic_Resources", "Oil_Gas",
+              "Banks", "Health_Care", "Automobile",
+              "Industrials", "Technology", "Construction", "Utilities", "Food",
+              "Telecommunication", "Personal_Goods")
+)
+
+# Get Returns
+df_return <- data %>% 
+  group_by(names) %>% 
+  mutate(return = RETURN(adjusted)) %>% 
+  ungroup(names) %>%          
+  select(date, names, return) %>% 
+  arrange(date, names)
+
+# Pull Benchmark 
+Benchmark <- tq_get("^STOXX", from = "2000-01-01") %>% 
+  select(date, adjusted) %>%
+  filter(date %in% data$date) %>% 
+  mutate(
+    Mkt = RETURN(adjusted, 1)
+  ) %>%
+  select(-adjusted)
+
+# Analyse Portfolio
+current_portfolio <- INSTRUMENTS %>% 
+  left_join(., getPortfolio(tws, INSTRUMENTS))
+
+# Get DB data ##################################################################
+DB_FILE = "C:/0cap_2/MacroMan/SystematicMacro/data/EU_SR_DATA.db"
+conn <- RSQLite::dbConnect(RSQLite::SQLite(), DB_FILE)
+portfolio_db <- tbl(conn, "PORTFOLIO") %>% as.data.frame()
+
+
+
+
+```
+
+
