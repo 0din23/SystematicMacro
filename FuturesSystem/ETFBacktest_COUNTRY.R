@@ -2,12 +2,8 @@ source("R/dependencies.R")
 
 # Get data
 instruments <-  data.frame(
-  "ticker" = c("EXV6.DE", "EXH1.DE", "EXV1.DE", "EXV4.DE", "EXV5.DE",
-               "EXH4.DE", "EXV3.DE", "EXV8.DE", "EXH8.DE", "EXH3.DE",
-               "EXV2.DE", "EXH7.DE"),
-  "names" = c("Basic_Resources", "Oil_Gas", "Banks", "Health_Care", "Automobile",
-              "Industrials", "Technology", "Construction", "Utilities", "Food",
-              "Telecommunication", "Personal_Goods")
+  "ticker" = c("CS1.MI", "IAEX.AS", "ETFMIB.MI", "GRE.PA", "CAC.PA", "EXS1.DE", "EXXX.MU", "CEC.PA"),
+  "names" = c("Spain", "Netherlands", "Italy", "Greece", "France", "Germany", "Austria", "Eastern_Europe")
 )
 data <- instruments %>% 
   pull(ticker) %>% 
@@ -21,7 +17,10 @@ df_return <- data %>%
   mutate(return = RETURN(adjusted)) %>% 
   ungroup(names) %>%          
   select(date, names, return) %>% 
-  arrange(date, names)
+  arrange(date, names) %>% 
+  pivot_wider(names_from = names, values_from = return) %>% 
+  na.omit() %>% 
+  pivot_longer(cols = colnames(.)[(colnames(.) != "date")], names_to = "names", values_to = "return")
 
 # Pull Benchmark 
 Benchmark <- tq_get("^STOXX", from = "2000-01-01") %>% 
@@ -239,10 +238,10 @@ SIGNALS %>%
   summarize(
     "Momentum_Corr" = cor(Momentum_sig_rank, Momentum_ret_rank),
     "Vol_Corr" = cor(Vol_sig_rank, Momentum_ret_rank),
-    "Group_Overlapp_Momentum" = mean((Momentum_sig_rank>6.5 & Momentum_ret_rank>6.5) |
-                                       (Momentum_sig_rank<6.5 & Momentum_ret_rank<6.5)),
-    "Group_Overlapp_Volatility" = mean((Vol_sig_rank<6.5 & Momentum_ret_rank>6.5) |
-                                         (Vol_sig_rank>6.5 & Momentum_ret_rank<6.5)),
+    "Group_Overlapp_Momentum" = mean((Momentum_sig_rank>4.5 & Momentum_ret_rank>4.5) |
+                                       (Momentum_sig_rank<4.5 & Momentum_ret_rank<4.5)),
+    "Group_Overlapp_Volatility" = mean((Vol_sig_rank<4.5 & Momentum_ret_rank>4.5) |
+                                         (Vol_sig_rank>4.5 & Momentum_ret_rank<4.5)),
   )
 
 
@@ -251,20 +250,20 @@ SIGNALS %>%
 ################################################################################
 ## General Set Up
 ## General Set Up
-holding_period <- "monthly"
-signal_lag_momentum <- 20
-signal_lag_risk <- 20
+holding_period <- "halfyear"
+signal_lag_momentum <- 120
+signal_lag_risk <- 120
 max_position <- 0.4
 min_position <- 0.05
 
 ## Define Signals
 SIGNAL_Momentum <- SIGNALS %>% 
-  mutate(SIGNAL = ifelse(Momentum_sig_rank > 6.5,1,0)) %>% 
+  mutate(SIGNAL = ifelse(Momentum_sig_rank > 4.5,1,0)) %>% 
   filter(LAG == signal_lag_momentum) %>% 
   select(date, names, SIGNAL)
 
 SIGNAL_Risk <- SIGNALS %>% 
-  mutate(SIGNAL = ifelse(Vol_sig_rank < 6.5,1,0)) %>% 
+  mutate(SIGNAL = ifelse(Vol_sig_rank < 4.5,1,0)) %>% 
   filter(LAG == signal_lag_risk) %>% 
   select(date, names, SIGNAL)
 
@@ -380,26 +379,26 @@ LSNL_Risk  <- BacktestEngine_1(RETURNS = df_return, OBJECTIVES = OBJECTIVES_Risk
                                SHORT_LEG_DOLLAR = 1)
 
 LSNL_Momentum_precog <- BacktestEngine_1(RETURNS = df_return, OBJECTIVES = OBJECTIVES_Momentum,
-                                  SIGNAL = SIGNAL_Momentum,
-                                  BETAS = DEC %>% select(date, names, ß_Mkt) %>% mutate(ß_Mkt = ß_Mkt %>% shift(-20)),
-                                  REBALANCE_FREQ = holding_period,
-                                  BETA = 0.5,
-                                  MAX_POSITION = max_position,
-                                  MIN_POSITION = min_position,
-                                  DOLLAR = 0.5,
-                                  LONG_LEG_DOLLAR = 1.5,
-                                  SHORT_LEG_DOLLAR = 1)
+                                         SIGNAL = SIGNAL_Momentum,
+                                         BETAS = DEC %>% select(date, names, ß_Mkt) %>% mutate(ß_Mkt = ß_Mkt %>% shift(-20)),
+                                         REBALANCE_FREQ = holding_period,
+                                         BETA = 0.5,
+                                         MAX_POSITION = max_position,
+                                         MIN_POSITION = min_position,
+                                         DOLLAR = 0.5,
+                                         LONG_LEG_DOLLAR = 1.5,
+                                         SHORT_LEG_DOLLAR = 1)
 
 LSNL_Risk_precog  <- BacktestEngine_1(RETURNS = df_return, OBJECTIVES = OBJECTIVES_Risk,
-                               SIGNAL = SIGNAL_Risk,
-                               BETAS = DEC %>% select(date, names, ß_Mkt) %>% mutate(ß_Mkt = ß_Mkt %>% shift(-20)),
-                               REBALANCE_FREQ = holding_period,
-                               BETA = 0.5,
-                               MAX_POSITION = max_position,
-                               MIN_POSITION = min_position,
-                               DOLLAR = 0.5,
-                               LONG_LEG_DOLLAR = 1.5,
-                               SHORT_LEG_DOLLAR = 1)
+                                      SIGNAL = SIGNAL_Risk,
+                                      BETAS = DEC %>% select(date, names, ß_Mkt) %>% mutate(ß_Mkt = ß_Mkt %>% shift(-20)),
+                                      REBALANCE_FREQ = holding_period,
+                                      BETA = 0.5,
+                                      MAX_POSITION = max_position,
+                                      MIN_POSITION = min_position,
+                                      DOLLAR = 0.5,
+                                      LONG_LEG_DOLLAR = 1.5,
+                                      SHORT_LEG_DOLLAR = 1)
 
 
 LSNL_res <- LSNL_Momentum$portfolio %>% 
@@ -431,23 +430,23 @@ LSNL_res_precog <- LSNL_Momentum_precog$portfolio %>%
 # EVALUATE BACKTEST #
 ################################################################################
 
-LSNL_res_precog %>% 
+LS_res %>% 
   select(Momentum_port,Risk_port,combinedStrategy, Mkt) %>% 
   xts(., order.by=as.Date(LSNL_res$date)) %>% 
   maxDrawdown(.)
 
-LSNL_res_precog %>% 
+LS_res %>% 
   select(Momentum_port,Risk_port,combinedStrategy, Mkt) %>% 
   xts(., order.by=as.Date(LSNL_res$date)) %>% 
   Return.annualized()
 
-LSNL_res_precog %>% 
+LS_res %>% 
   select(Momentum_port,Risk_port,combinedStrategy, Mkt) %>% 
   xts(., order.by=as.Date(LSNL_res$date)) %>% 
   SharpeRatio.annualized()
 
 
-plot <- LSNL_res_precog %>% 
+plot <- LS_res %>% 
   ggplot(.) +
   geom_line(aes(x=date, y=Portfolio_Momentum, color = "Portfolio_Momentum")) +
   geom_line(aes(x=date, y=Portfolio_Risk, color = "Portfolio_Risk")) +

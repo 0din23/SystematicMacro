@@ -49,6 +49,12 @@ myEndpoints <- function(date_vec, endpoint){
       quarter()
     date_vec_2 <- date_vec %>%
       lag()
+  } else if(endpoint == "halfyear"){
+    date_vec <- date_vec %>%
+      quarter()
+    date_vec <- ifelse(date_vec<3,1,2)
+    date_vec_2 <- date_vec %>%
+      lag()
   }
   
   return(!(date_vec == date_vec_2))
