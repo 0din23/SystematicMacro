@@ -69,6 +69,8 @@ colnames(INSTRUMENTS)[3] <- "price"
 INSTRUMENTS <- INSTRUMENTS %>% 
   left_join(., current_portfolio %>% select(-names, - price), by = "ticker")
 
+RSQLite::dbWriteTable(conn, "PORTFOLIO_STAMPS", current_portfolio,append = TRUE, overwrite = FALSE)
+
 ################################################################################
 # Generate New Portfolio #
 ################################################################################
@@ -277,8 +279,18 @@ INSTRUMENTS <- INSTRUMENTS %>%
   arrange(names) %>% 
   mutate(optPort = weights_final)
 
-p_val <- 10000
-INSTRUMENTS$EUR <- p_val * INSTRUMENTS$optPort
+
+p_val_long <- sum(INSTRUMENTS$price * ifelse(INSTRUMENTS$amount>0,INSTRUMENTS$amount,0))
+p_val_short <- sum(INSTRUMENTS$price * ifelse(INSTRUMENTS$amount<0,-INSTRUMENTS$amount,0))
+
+p_val <- sum(INSTRUMENTS$price * INSTRUMENTS$amount)*2
+INSTRUMENTS$curr_port <- (INSTRUMENTS$price*INSTRUMENTS$amount)/ p_val
+INSTRUMENTS$port_delta <- INSTRUMENTS$optPort- INSTRUMENTS$curr_port
+INSTRUMENTS$port_delta_round <- ifelse(abs(INSTRUMENTS$port_delta) < 0.05, 0, INSTRUMENTS$port_delta) 
+INSTRUMENTS$port_delta_round <- INSTRUMENTS$port_delta_round - (INSTRUMENTS$port_delta_round * sum(INSTRUMENTS$port_delta_round) / sum(abs(INSTRUMENTS$port_delta_round)))
+INSTRUMENTS$optPort_new <- INSTRUMENTS$curr_port + INSTRUMENTS$port_delta_round 
+
+INSTRUMENTS$EUR <- p_val * INSTRUMENTS$optPort_new
 INSTRUMENTS$SHARES <- round(INSTRUMENTS$EUR / INSTRUMENTS$price)
 INSTRUMENTS$trade_delta <- INSTRUMENTS$SHARES - INSTRUMENTS$amount
 
@@ -294,18 +306,6 @@ executeTrades(newPort = new_portfolio, tws = tws, TRANSMIT = F)
 ################################################################################
 # Save Data #
 ################################################################################
-
-# Update Rebalancing table
-RSQLite::dbWriteTable(conn, "REBALANCING_DATES",
-                      data.frame("date"=as.character(Sys.Date()),"SubPortfolio"=rebalance_subPort),
-                      append = TRUE, overwrite = FALSE)
-
-
-# Update Sub Port Table
-subPort_db <- INSTRUMENTS %>% mutate(date = as.character(Sys.Date()))
-RSQLite::dbWriteTable(conn, paste0("SUB_PORT_",rebalance_subPort),
-                      subPort_db,
-                      append = TRUE, overwrite = FALSE)
 
 # Update Agg Port Table
 Port_db <- INSTRUMENTS %>% mutate(date = as.character(Sys.Date()))

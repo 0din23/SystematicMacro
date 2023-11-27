@@ -9,6 +9,7 @@ instruments <-  data.frame(
               "Industrials", "Technology", "Construction", "Utilities", "Food",
               "Telecommunication", "Personal_Goods")
 )
+
 data <- instruments %>% 
   pull(ticker) %>% 
   tidyquant::tq_get(., from = "2012-01-01") %>% 
@@ -251,8 +252,8 @@ SIGNALS %>%
 ################################################################################
 ## General Set Up
 ## General Set Up
-holding_period <- "monthly"
-signal_lag_momentum <- 20
+holding_period <- "weekly"
+signal_lag_momentum <- 5
 signal_lag_risk <- 20
 max_position <- 0.4
 min_position <- 0.05
@@ -379,8 +380,9 @@ LSNL_Risk  <- BacktestEngine_1(RETURNS = df_return, OBJECTIVES = OBJECTIVES_Risk
                                LONG_LEG_DOLLAR = 1.5,
                                SHORT_LEG_DOLLAR = 1)
 
-LSNL_Momentum_precog <- BacktestEngine_1(RETURNS = df_return, OBJECTIVES = OBJECTIVES_Momentum,
-                                  SIGNAL = SIGNAL_Momentum,
+LSNL_Momentum_precog <- BacktestEngine_1(RETURNS = df_return,
+                                         OBJECTIVES = OBJECTIVES_Momentum %>% mutate(SIGNAL = OBJECTIVE %>% shift(-20)),
+                                  SIGNAL = SIGNAL_Momentum %>% mutate(SIGNAL = SIGNAL %>% shift(-20)),
                                   BETAS = DEC %>% select(date, names, ß_Mkt) %>% mutate(ß_Mkt = ß_Mkt %>% shift(-20)),
                                   REBALANCE_FREQ = holding_period,
                                   BETA = 0.5,
@@ -390,8 +392,9 @@ LSNL_Momentum_precog <- BacktestEngine_1(RETURNS = df_return, OBJECTIVES = OBJEC
                                   LONG_LEG_DOLLAR = 1.5,
                                   SHORT_LEG_DOLLAR = 1)
 
-LSNL_Risk_precog  <- BacktestEngine_1(RETURNS = df_return, OBJECTIVES = OBJECTIVES_Risk,
-                               SIGNAL = SIGNAL_Risk,
+LSNL_Risk_precog  <- BacktestEngine_1(RETURNS = df_return,
+                                      OBJECTIVES = OBJECTIVES_Risk %>% mutate(SIGNAL = OBJECTIVE %>% shift(-20)),
+                                      SIGNAL = SIGNAL_Risk %>% mutate(SIGNAL = SIGNAL %>% shift(-20)),
                                BETAS = DEC %>% select(date, names, ß_Mkt) %>% mutate(ß_Mkt = ß_Mkt %>% shift(-20)),
                                REBALANCE_FREQ = holding_period,
                                BETA = 0.5,
@@ -431,23 +434,23 @@ LSNL_res_precog <- LSNL_Momentum_precog$portfolio %>%
 # EVALUATE BACKTEST #
 ################################################################################
 
-LSNL_res_precog %>% 
+LSNL_res %>% 
   select(Momentum_port,Risk_port,combinedStrategy, Mkt) %>% 
   xts(., order.by=as.Date(LSNL_res$date)) %>% 
   maxDrawdown(.)
 
-LSNL_res_precog %>% 
+LSNL_res %>% 
   select(Momentum_port,Risk_port,combinedStrategy, Mkt) %>% 
   xts(., order.by=as.Date(LSNL_res$date)) %>% 
   Return.annualized()
 
-LSNL_res_precog %>% 
+LSNL_res %>% 
   select(Momentum_port,Risk_port,combinedStrategy, Mkt) %>% 
   xts(., order.by=as.Date(LSNL_res$date)) %>% 
   SharpeRatio.annualized()
 
 
-plot <- LSNL_res_precog %>% 
+plot <- LSNL_res %>% 
   ggplot(.) +
   geom_line(aes(x=date, y=Portfolio_Momentum, color = "Portfolio_Momentum")) +
   geom_line(aes(x=date, y=Portfolio_Risk, color = "Portfolio_Risk")) +

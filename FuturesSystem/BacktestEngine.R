@@ -24,7 +24,6 @@ BacktestEngine_1 <- function(RETURNS, OBJECTIVES, SIGNAL, BETAS, REBALANCE_FREQ=
   # calculate rebalance weights
   rebalance_weights <- rebalance_dates %>% 
     lapply(., function(d){
-      print(d)
       
       objectives <- OBJECTIVES %>% filter(date==d) %>% arrange(names) %>%  pull(OBJECTIVE) %>% as.numeric()
       beta <- BETAS %>% filter(date==d) %>% arrange(names) %>%  pull(ß_Mkt) %>% as.numeric() %>% round(.,3)
@@ -36,7 +35,6 @@ BacktestEngine_1 <- function(RETURNS, OBJECTIVES, SIGNAL, BETAS, REBALANCE_FREQ=
       check2 <- (length(objectives) == length(beta)) & (length(objectives) == length(exposure))
       check3 <- length(objectives) != 0
       
-      print(c_names)
       if(check1&check2&check3){
         # print(d)
         # print(check2)
